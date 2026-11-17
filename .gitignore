@@ -1,0 +1,6 @@
+# Repo ini PUBLIK (GitHub Pages) dan hanya memuat file web.
+# Semua file lain (PRD, docs, tests, reference, templates) sengaja TIDAK ikut karena berisi data internal bengkel.
+/*
+!/.gitignore
+!/index.html
+!/src/

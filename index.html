@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Part Monitor — Daya Daihatsu Medan</title>
+<style>
+  :root {
+    --bg: #f4f6f8; --card: #fff; --line: #dfe4ea; --text: #1c2430; --muted: #66727f; --accent: #c8102e;
+    --accent-dark: #a00d25; --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  button, input, select { font: inherit; color: inherit; }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 0 16px; }
+
+  header { background: #fff; border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
+  header .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding-top: 10px; padding-bottom: 10px; }
+  .brand { flex: 1 1 240px; min-width: 0; }
+  .brand h1 { margin: 0; font-size: 17px; }
+  .brand h1 span { color: var(--accent); }
+  .brand p { margin: 0; color: var(--muted); font-size: 12.5px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+  .btn { border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 8px 14px; cursor: pointer; font-weight: 600; white-space: nowrap; }
+  .btn:hover { background: #f1f3f5; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { background: var(--accent-dark); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+
+  main { padding: 16px 0 48px; }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
+  .panel h2 { margin: 0 0 4px; font-size: 15px; }
+  .hint { color: var(--muted); font-size: 12.5px; margin: 0 0 12px; }
+  [hidden] { display: none !important; }
+
+  .drop { border: 2px dashed #b9c2cc; border-radius: var(--radius); padding: 22px 16px; text-align: center; cursor: pointer; background: #fafbfc; }
+  .drop.over { border-color: var(--accent); background: #fff5f6; }
+  .drop strong { display: block; font-size: 15px; margin-bottom: 2px; }
+  .slots { list-style: none; margin: 14px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px; }
+  .slot { border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; display: flex; gap: 10px; }
+  .slot .mark { flex: none; width: 22px; height: 22px; border-radius: 50%; background: #e6eaee; color: #8793a0; display: grid; place-items: center; font-size: 13px; font-weight: 700; }
+  .slot.ok .mark { background: #18794e; color: #fff; }
+  .slot.bad .mark { background: #b42318; color: #fff; }
+  .slot .body { min-width: 0; flex: 1; }
+  .slot b { display: block; }
+  .slot small { display: block; color: var(--muted); overflow-wrap: anywhere; }
+  .slot details { margin-top: 4px; font-size: 12.5px; }
+  .slot details ul { margin: 4px 0 0; padding-left: 18px; max-height: 160px; overflow: auto; }
+  .notes { margin: 12px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+  .notes li { border-radius: 8px; padding: 8px 12px; font-size: 13px; }
+  .notes .err { background: #fde8e8; color: #8a1c12; }
+  .notes .warn { background: #fff4dc; color: #7a4a00; }
+  .notes .info { background: #e8f1fd; color: #1a4480; }
+  .upload-foot { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 16px; }
+  .card { text-align: left; background: var(--card); border: 1px solid var(--line); border-left: 4px solid #9aa3af; border-radius: var(--radius); padding: 10px 12px; cursor: pointer; }
+  .card:hover { box-shadow: 0 1px 6px rgba(0, 0, 0, .08); }
+  .card.active { outline: 2px solid var(--text); outline-offset: 1px; }
+  .card .k { color: var(--muted); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+  .card .v { font-size: 24px; font-weight: 700; line-height: 1.2; }
+  .card .s { color: var(--muted); font-size: 12px; min-height: 17px; }
+  .card.c-stockout { border-left-color: #d92d20; } .card.c-order { border-left-color: #f79009; }
+  .card.c-overstock { border-left-color: #2e6fdb; } .card.c-nonstock { border-left-color: #c3cad2; }
+  .card.c-dead { border-left-color: #4b5563; } .card.c-soq { border-left-color: var(--accent); grid-column: span 2; }
+
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+  .toolbar input[type=search] { flex: 1 1 220px; min-width: 0; }
+  .toolbar input, .toolbar select { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: #fff; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg button { border: 0; background: #fff; padding: 8px 12px; cursor: pointer; font-weight: 600; }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button.on { background: var(--text); color: #fff; }
+  .count { color: var(--muted); font-size: 12.5px; margin-left: auto; }
+
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; min-width: 900px; background: #fff; }
+  th, td { padding: 7px 10px; border-bottom: 1px solid #edf0f3; text-align: right; vertical-align: top; white-space: nowrap; }
+  th { background: #f6f8fa; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; color: #4a5562; cursor: pointer; user-select: none; position: sticky; top: 0; }
+  th:hover { color: var(--text); }
+  th.sorted::after { content: " ▲"; font-size: 10px; } th.sorted.desc::after { content: " ▼"; }
+  th.l, td.l { text-align: left; }
+  td.item { white-space: normal; min-width: 210px; }
+  td.item code { font: 600 13px ui-monospace, Consolas, monospace; }
+  td small { display: block; color: var(--muted); font-size: 12px; }
+  td.num { font-variant-numeric: tabular-nums; }
+  td.strong { font-weight: 700; }
+  td.neg { color: #2e6fdb; }
+  tbody tr:hover { background: #fafbfc; }
+  .empty { text-align: center; color: var(--muted); padding: 28px 10px; }
+
+  .badge { display: inline-block; border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 700; }
+  .s-stockout { background: #fde2e0; color: #b42318; } .s-order { background: #ffecd1; color: #b54708; }
+  .s-normal { background: #dff5e6; color: #18794e; } .s-overstock { background: #e0ebfd; color: #1d4ed8; }
+  .s-nonstock { background: #eef0f3; color: #5f6b7a; } .s-dead { background: #4b5563; color: #fff; }
+  .s-nomove { background: transparent; color: #9aa3af; border: 1px dashed #c3cad2; }
+  .cat { font-size: 11px; font-weight: 700; color: var(--muted); }
+  .more { display: flex; justify-content: center; margin-top: 10px; }
+  dialog { border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; width: min(380px, calc(100vw - 32px)); color: var(--text); }
+  dialog::backdrop { background: rgba(20, 28, 38, .45); }
+  dialog h2 { margin: 0 0 4px; font-size: 16px; }
+  dialog label { display: block; font-weight: 600; font-size: 13px; margin-top: 10px; }
+  dialog input { display: block; width: 100%; margin-top: 4px; border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; font-weight: 400; }
+  .dlg-msg { color: #b42318; font-size: 13px; margin: 10px 0 0; min-height: 18px; }
+  .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: #18794e; color: #fff; padding: 10px 16px; border-radius: 8px;
+    font-weight: 600; box-shadow: 0 4px 14px rgba(0, 0, 0, .2); z-index: 10; max-width: calc(100vw - 32px); }
+  footer { color: var(--muted); font-size: 12px; text-align: center; padding: 0 16px 24px; }
+
+  @media (max-width: 600px) {
+    .card .v { font-size: 20px; }
+    .actions .btn { padding: 7px 10px; }
+    th, td { padding: 6px 8px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="brand">
+      <h1><span>Daya-LAE</span> Part Monitor</h1>
+      <p id="meta">Bengkel Daya Daihatsu Medan</p>
+    </div>
+    <div class="actions">
+      <button class="btn" id="btnUpload">Upload Data ADMS</button>
+      <button class="btn" id="btnSave" hidden>Simpan ke Server</button>
+      <button class="btn primary" id="btnExport" disabled>Export SOQ</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="panel" id="uploadPanel" hidden>
+    <h2>Upload export ADMS</h2>
+    <p class="hint">Masukkan 4 laporan mentah sekaligus, tanpa dirapikan: Penjualan Part, Pengeluaran Bahan, Stock Status Part, dan Stock Status Bahan. Jenis laporan dikenali otomatis. File dibaca di perangkat ini saja.</p>
+    <div class="drop" id="drop" tabindex="0" role="button">
+      <strong>Tarik file ke sini, atau klik untuk memilih</strong>
+      <span class="hint">.xls · .xlsx · .csv</span>
+      <input type="file" id="fileInput" multiple accept=".xls,.xlsx,.csv" hidden>
+    </div>
+    <ul class="slots" id="slots"></ul>
+    <ul class="notes" id="notes"></ul>
+    <div class="upload-foot">
+      <button class="btn primary" id="btnCalc" disabled>Hitung</button>
+      <button class="btn" id="btnReset">Kosongkan</button>
+      <button class="btn" id="btnCloseUpload" hidden>Tutup</button>
+    </div>
+  </section>
+
+  <section id="dash" hidden>
+    <div class="cards" id="cards"></div>
+    <div class="panel">
+      <div class="toolbar">
+        <input type="search" id="q" placeholder="Cari kode atau nama item…" aria-label="Cari item">
+        <div class="seg" id="segCat">
+          <button data-cat="" class="on">Semua</button><button data-cat="PART">Part</button><button data-cat="BAHAN">Bahan</button>
+        </div>
+        <select id="selStatus" aria-label="Filter status"></select>
+        <span class="count" id="count"></span>
+      </div>
+      <div class="tablewrap">
+        <table>
+          <thead><tr id="thead"></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <div class="more"><button class="btn" id="btnMore" hidden></button></div>
+    </div>
+  </section>
+</main>
+<dialog id="saveDlg">
+  <form id="saveForm" method="dialog">
+    <h2>Simpan ke server</h2>
+    <p class="hint">Data hasil hitung akan menggantikan data yang dilihat team.</p>
+    <label>PIN<input type="password" id="pin" inputmode="numeric" autocomplete="off" required></label>
+    <label>Nama Anda (untuk catatan import)<input type="text" id="userName" maxlength="40" autocomplete="off"></label>
+    <p class="dlg-msg" id="saveMsg" role="alert"></p>
+    <div class="upload-foot">
+      <button class="btn primary" id="btnDoSave" type="submit">Simpan</button>
+      <button class="btn" id="btnCancelSave" type="button">Batal</button>
+    </div>
+  </form>
+</dialog>
+<div class="toast" id="toast" role="status" hidden></div>
+<footer>MAD = Demand 6 bulan ÷ 6 · MIP = Stock Level × MAD · SOQ = MIP − Stock · Stock = Gudang + DMS + DPS Langkat</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="src/calc.js"></script>
+<script src="src/import.js"></script>
+<script src="src/build.js"></script>
+<script src="src/config.js" onerror="this.remove()"></script>
+<script src="src/api.js"></script>
+<script src="src/ui.js"></script>
+</body>
+</html>
