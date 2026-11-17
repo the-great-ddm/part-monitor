@@ -29,7 +29,7 @@
   // Urutan = prioritas tindakan (PRD §7)
   const STATUS = {
     STOCKOUT: { label: 'Stockout', cls: 's-stockout' },
-    ORDER: { label: 'Perlu Order', cls: 's-order' },
+    ORDER: { label: 'Stock Menipis', cls: 's-order' },
     INCOMING: { label: 'Menunggu Datang', cls: 's-incoming' },
     NORMAL: { label: 'Normal', cls: 's-normal' },
     OVERSTOCK: { label: 'Overstock', cls: 's-overstock' },
@@ -211,14 +211,14 @@
     $('cards').innerHTML = [
       card('', '', 'Total item', num(s.total, 0), s.by.NO_MOVE.n ? `+${s.by.NO_MOVE.n} tanpa pergerakan` : ''),
       card('STOCKOUT', 'c-stockout', 'Stockout', num(s.by.STOCKOUT.n, 0), 'Stok 0, prioritas order'),
-      card('ORDER', 'c-order', 'Perlu Order', num(s.by.ORDER.n, 0), 'Stok di bawah MIP'),
+      card('ORDER', 'c-order', 'Stock Menipis', num(s.by.ORDER.n, 0), 'Stok ada tapi di bawah MIP, perlu order'),
       card('INCOMING', 'c-incoming', 'Menunggu datang', num(s.by.INCOMING.n, 0), 'Sudah tertutup PO, jangan order lagi'),
       card('OVERSTOCK', 'c-overstock', 'Overstock', num(s.by.OVERSTOCK.n, 0), 'Nilai stok ' + rpShort(s.by.OVERSTOCK.val)),
       card('NON_STOCK', 'c-nonstock', 'Non-Stock', num(s.by.NON_STOCK.n, 0), 'Pesan saat ada kebutuhan'),
       card('DEAD', 'c-dead', 'Dead stock', num(s.by.DEAD.n, 0), 'Modal tertahan ' + rpShort(s.by.DEAD.val)),
       card('SOQ', 'c-soq', 'Nilai SOQ', rpShort(s.soqPart + s.soqBahan),
-        `Part ${s.nPart} item ${rpShort(s.soqPart)} · Bahan ${s.nBahan} item ${rpShort(s.soqBahan)}`
-        + (s.noPrice ? ` · ${s.noPrice} item belum ada harga` : '')),
+        `${s.nPart + s.nBahan} item perlu order (Part ${s.nPart} · ${rpShort(s.soqPart)}, Bahan ${s.nBahan} · ${rpShort(s.soqBahan)})`
+        + (s.noPrice ? ` · ${s.noPrice} item belum ada harga, belum ikut dijumlah` : '')),
     ].join('') + specialCard();
     return s;
   }
