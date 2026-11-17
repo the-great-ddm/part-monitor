@@ -9,6 +9,7 @@
   const $ = (id) => doc.getElementById(id);
   const STORE_KEY = 'laepart.result.v1';
   const PO_KEY = 'laepart.po.v1';
+  const PARAM_KEY = 'laepart.params.v1'; // salinan parameter aktif terakhir (agar tetap jalan tanpa server)
   const PAGE = 300;
 
   const BULAN = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
@@ -65,6 +66,8 @@
     parsed: {}, files: {}, fileErrors: [], result: null, fresh: false,
     filter: { q: '', cat: '', status: '' }, sort: { key: 'priority', dir: 1 }, limit: PAGE,
     po: { store: {}, dirty: false, log: [], busy: false, serverApi: 0 },
+    // parameter rumus aktif (menu Parameter, src/paramui.js); log = riwayat perubahan dari server
+    params: { active: L.params.clone(L.params.DEFAULT_SETTINGS), log: [], serverApi: 0, fromServer: false },
   };
 
   // ---------- Baca file ----------
@@ -168,7 +171,7 @@
   function compute() {
     let r;
     try {
-      r = L.build.buildResults(state.parsed);
+      r = L.build.buildResults(state.parsed, { settings: state.params.active });
     } catch (e) {
       state.fileErrors = ['Perhitungan gagal: ' + e.message];
       renderUpload();
@@ -246,7 +249,8 @@
       if (status === 'SOQ') { if (!(x.soq_order > 0)) return false; }
       else if (status) { if (x.status !== status) return false; }
       else if (x.status === 'NO_MOVE' && !needle) return false; // disembunyikan secara default
-      if (needle && !x.item_code.includes(needle) && !String(x.item_name).toUpperCase().includes(needle)) return false;
+      if (needle && !x.item_code.includes(needle) && !String(x.item_name).toUpperCase().includes(needle)
+        && !String(x.supplier_name || '').toUpperCase().includes(needle)) return false;
       return true;
     });
     const { key, dir } = state.sort;
@@ -267,8 +271,10 @@
     const split = x.stock > 0 && (x.stock_dms || x.stock_dps)
       ? `<small>Gudang ${num(x.stock_gudang)} · DMS ${num(x.stock_dms)} · DPS ${num(x.stock_dps)}</small>` : '';
     const merged = x.merged_from && x.merged_from.length ? `<small>termasuk ${esc(x.merged_from.join(', '))}</small>` : '';
+    const sup = x.category === 'BAHAN' && x.supplier_name ? `<small>Supplier: ${esc(x.supplier_name)}</small>` : '';
+    const adj = x.adjust ? `<small class="adj" title="${esc(x.adjust_reason)}">⚙ ${esc(x.adjust)}</small>` : '';
     return `<tr>
-      <td class="l item"><code>${esc(x.item_code)}</code><small>${esc(x.item_name)}</small>${merged}</td>
+      <td class="l item"><code>${esc(x.item_code)}</code><small>${esc(x.item_name)}</small>${merged}${sup}${adj}</td>
       <td class="l"><span class="cat">${x.category}</span></td>
       <td class="l"><span class="badge ${st.cls}">${st.label}</span></td>
       <td class="num">${num(x.stock)}${split}</td>
@@ -332,9 +338,9 @@
     const wb = X.utils.book_new();
     const sheet = (cat, title) => {
       const list = r.items.filter((x) => x.category === cat && x.soq_order > 0)
-        .sort((a, b) => RANK[a.status] - RANK[b.status] || (b.soq_value || 0) - (a.soq_value || 0) || a.item_code.localeCompare(b.item_code));
-      const head = ['No', 'Kode', 'Nama', 'Status', 'Stock', 'Gudang', 'DMS', 'DPS Langkat', 'Demand 6 Bln', 'MAD', 'MIP', 'On Order', 'SOQ', 'Order', 'Harga Satuan', 'Nilai Order'];
-      const rows = list.map((x, i) => [i + 1, x.item_code, x.item_name, STATUS[x.status].label, x.stock, x.stock_gudang, x.stock_dms, x.stock_dps,
+        .sort((a, b) => (cat === 'BAHAN' ? String(a.supplier_name).localeCompare(String(b.supplier_name)) : 0) || RANK[a.status] - RANK[b.status] || (b.soq_value || 0) - (a.soq_value || 0) || a.item_code.localeCompare(b.item_code));
+      const head = ['No', 'Kode', 'Nama', 'Supplier', 'Status', 'Stock', 'Gudang', 'DMS', 'DPS Langkat', 'Demand 6 Bln', 'MAD', 'MIP', 'On Order', 'SOQ', 'Order', 'Harga Satuan', 'Nilai Order'];
+      const rows = list.map((x, i) => [i + 1, x.item_code, x.item_name, x.supplier_name || '', STATUS[x.status].label, x.stock, x.stock_gudang, x.stock_dms, x.stock_dps,
         x.demand, Math.round(x.mad * 100) / 100, x.mip, x.on_order || 0, x.soq, x.soq_order, x.unit_price, x.soq_value]);
       const total = list.reduce((a, x) => a + (x.soq_value || 0), 0);
       const aoa = [
@@ -344,10 +350,10 @@
         head,
         ...rows,
         [],
-        [null, null, 'TOTAL', null, null, null, null, null, null, null, null, null, null, null, null, total],
+        [null, null, 'TOTAL', null, null, null, null, null, null, null, null, null, null, null, null, null, total],
       ];
       const ws = X.utils.aoa_to_sheet(aoa);
-      ws['!cols'] = [5, 22, 38, 16, 9, 9, 8, 11, 12, 9, 9, 9, 9, 9, 13, 15].map((wch) => ({ wch }));
+      ws['!cols'] = [5, 22, 38, 16, 16, 9, 9, 8, 11, 12, 9, 9, 9, 9, 9, 13, 15].map((wch) => ({ wch }));
       return ws;
     };
     X.utils.book_append_sheet(wb, sheet('PART', 'Daftar SOQ Part (ATPM)'), 'SOQ Part (ATPM)');
@@ -362,7 +368,13 @@
 
   // ---------- Server (T7, opsional) ----------
   // Formulir di halaman (bukan prompt/alert bawaan browser, yang diblokir di sebagian browser & webview).
-  function openSaveDialog() {
+  /** Dialog PIN serbaguna. opts: { title, hint, button, onSubmit: async (pin, user) => pesan sukses } — tanpa opts = simpan data. */
+  let dlgMode = null;
+  function openSaveDialog(opts) {
+    dlgMode = opts && opts.onSubmit ? opts : null;
+    $('saveDlgTitle').textContent = (dlgMode && dlgMode.title) || 'Simpan ke server';
+    $('saveDlgHint').textContent = (dlgMode && dlgMode.hint) || 'Data hasil hitung dan daftar PO outstanding akan menggantikan data yang dilihat team.';
+    $('btnDoSave').textContent = (dlgMode && dlgMode.button) || 'Simpan';
     $('pin').value = '';
     $('saveMsg').textContent = '';
     try { $('userName').value = root.localStorage.getItem('laepart.user') || ''; } catch (e) { /* abaikan */ }
@@ -384,8 +396,22 @@
     const user = $('userName').value.trim();
     if (!pin) return;
     const btn = $('btnDoSave');
+    const label = btn.textContent;
     $('saveMsg').textContent = '';
     btn.disabled = true; btn.textContent = 'Menyimpan…';
+    if (dlgMode) {
+      try {
+        const msg = await dlgMode.onSubmit(pin, user);
+        try { root.localStorage.setItem('laepart.user', user); } catch (err) { /* abaikan */ }
+        $('saveDlg').close();
+        toast(msg || 'Tersimpan.');
+      } catch (err) {
+        $('saveMsg').textContent = 'Gagal menyimpan: ' + err.message;
+      } finally {
+        btn.disabled = false; btn.textContent = label;
+      }
+      return;
+    }
     try {
       const p = state.parsed;
       const stock = [];
@@ -432,7 +458,23 @@
   /** Hitung ulang SOQ & status semua item dengan On Order terbaru (dari demand & stok, jadi aman dipanggil berulang). */
   function applyOnOrder() {
     if (!state.result) return;
-    state.result.items = L.build.applyOnOrder(state.result.items, L.po.onOrderByItem(state.po.store, poOpts()).map);
+    state.result.items = recalcWith(state.params.active);
+  }
+
+  /** Hasil hitung ulang semua item dengan parameter tertentu (untuk pratinjau di menu Parameter). */
+  function recalcWith(settings) {
+    return L.build.recalc(state.result.items, { onOrder: L.po.onOrderByItem(state.po.store, poOpts()).map, settings });
+  }
+
+  /** Parameter aktif baru (setelah disimpan): hitung ulang & tampilkan. */
+  function setParams(settings) {
+    state.params.active = L.params.clone(settings);
+    try { root.localStorage.setItem(PARAM_KEY, JSON.stringify(state.params.active)); } catch (e) { /* abaikan */ }
+    applyOnOrder();
+    if (state.result) {
+      if (state.result.source !== 'server') { try { root.localStorage.setItem(STORE_KEY, JSON.stringify(state.result)); } catch (e) { /* abaikan */ } }
+      renderDash();
+    }
   }
 
   function knownCodes() {
@@ -585,7 +627,7 @@
     const drop = $('poDrop'), input = $('poFile'), list = $('poList');
     $('btnPo').addEventListener('click', () => showPo($('poPanel').hidden));
     $('btnPoClose').addEventListener('click', () => showPo(false));
-    $('btnPoSave').addEventListener('click', openSaveDialog);
+    $('btnPoSave').addEventListener('click', () => openSaveDialog());
     drop.addEventListener('click', () => input.click());
     drop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } });
     input.addEventListener('change', () => { if (input.files.length) addPoImages(input.files); input.value = ''; });
@@ -663,6 +705,10 @@
       if (saved && Array.isArray(saved.items)) state.result = saved;
     } catch (e) { /* abaikan data lokal yang rusak */ }
     try {
+      const ps = JSON.parse(root.localStorage.getItem(PARAM_KEY) || 'null');
+      if (ps && Array.isArray(ps.suppliers) && ps.suppliers.length) state.params.active = ps;
+    } catch (e) { /* abaikan */ }
+    try {
       const po = JSON.parse(root.localStorage.getItem(PO_KEY) || 'null');
       if (po && po.store) { state.po.store = po.store; state.po.dirty = !!po.dirty; }
     } catch (e) { /* abaikan */ }
@@ -674,6 +720,15 @@
       try {
         const r = await L.api.fetchResults();
         state.po.serverApi = r.api || 0;
+        state.params.serverApi = r.api || 0;
+        if (r.settings) {
+          // backend v3: parameter di server berlaku untuk semua (tab kosong = bawaan)
+          const ps = L.params.fromRows(r.settings);
+          state.params.active = ps || L.params.clone(L.params.DEFAULT_SETTINGS);
+          state.params.fromServer = !!ps;
+          state.params.log = Array.isArray(r.param_log) ? r.param_log : [];
+          try { root.localStorage.setItem(PARAM_KEY, JSON.stringify(state.params.active)); } catch (e) { /* abaikan */ }
+        }
         // PO dari server dipakai kecuali ada perubahan lokal yang belum disimpan
         if (Array.isArray(r.po) && !state.po.dirty) { state.po.store = L.po.fromRows(r.po); persistPo(); }
         if (r && r.items && r.items.length && !state.fresh) {
@@ -683,6 +738,7 @@
         applyOnOrder();
         if (state.result) renderDash();
         renderPo();
+        if (L.paramUi) L.paramUi.serverLoaded();
       } catch (e) {
         if (!state.result) { state.fileErrors = ['Data dari server tidak bisa dimuat: ' + e.message]; renderUpload(); }
       }
@@ -709,7 +765,7 @@
     $('btnReset').addEventListener('click', resetUpload);
     $('btnCalc').addEventListener('click', compute);
     $('btnExport').addEventListener('click', exportSOQ);
-    $('btnSave').addEventListener('click', openSaveDialog);
+    $('btnSave').addEventListener('click', () => openSaveDialog());
     $('saveForm').addEventListener('submit', saveToServer);
     $('btnCancelSave').addEventListener('click', () => $('saveDlg').close());
     $('btnMore').addEventListener('click', () => { state.limit = Infinity; renderTable(); });
@@ -738,6 +794,7 @@
     loadInitial();
   }
 
-  L.ui = { addFiles, compute, exportSOQ, soqWorkbook, addPoImages, state };
+  L.ui = { addFiles, compute, exportSOQ, soqWorkbook, addPoImages, state, recalcWith, setParams, openSaveDialog, toast, summary, todayISO,
+    fmt: { esc, num, rp, rpShort, tgl }, STATUS };
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', init); else init();
 })(window);

@@ -11,12 +11,34 @@
   const isNode = typeof module !== 'undefined' && module.exports;
   const calc = isNode ? require('./calc.js') : root.LAEPart.calc;
   const importer = isNode ? require('./import.js') : root.LAEPart.importer;
+  const P = isNode ? require('./params.js') : root.LAEPart.params;
 
   const SLOC_LABEL = { '1000': 'gudang', '3000': 'gudang', '5101': 'dms', '5102': 'dps' };
 
-  /** Override hari (Stock Level) per pola kode, sesuai Excel: oli KIXX 15+15+15. Bisa di-override dari master. */
-  const DEFAULT_DAYS = [[/^SAN-OIL-KIX-/, [15, 15, 15]]];
-  const daysFor = (code) => (DEFAULT_DAYS.find(([re]) => re.test(code)) || [])[1];
+  /**
+   * Satu item → calc.calcItem dengan parameter supplier-nya (params.js) + penyesuaian item.
+   * opts.params (lama) tetap didukung: bila diisi, dipakai apa adanya tanpa pengaturan supplier.
+   */
+  function calcOne(it, opts, extra = {}) {
+    const settings = opts.settings || P.DEFAULT_SETTINGS;
+    const r = P.resolve(it, settings, calc.DEFAULT_PARAMS);
+    const input = { ...it, ...extra, ...r.fields };
+    if (input.moq === undefined) delete input.moq;
+    if (extra.days) input.days = extra.days; else delete input.days;
+    if (extra.moq) input.moq = extra.moq;
+    const res = calc.calcItem(input, opts.params || r.params);
+    res.soq_value = res.unit_price != null ? Math.round(res.soq_order * res.unit_price) : null;
+    res.supplier = r.supplier ? r.supplier.id : '';
+    res.supplier_name = r.supplier ? r.supplier.name : '';
+    const adj = [];
+    if (r.fields.mip_override != null) adj.push('MIP manual');
+    if (r.fields.level_override != null) adj.push('Stock Level manual');
+    if (r.rule && r.rule.factor != null && Number(r.rule.factor) !== 100) adj.push('Pengali MIP ' + r.rule.factor + '%');
+    if (r.rule && r.rule.multiple != null) adj.push('Kelipatan ' + r.rule.multiple);
+    res.adjust = adj.join(', ');
+    res.adjust_reason = adj.length && r.rule ? r.rule.reason || '' : '';
+    return res;
+  }
 
   /** Kode bahan → kode part tujuan gabung. Bisa di-override dari tab `items` (kolom merge_into). */
   const DEFAULT_MERGE = {
@@ -102,30 +124,24 @@
       const m = master[it.item_code] || {};
       if (m.active === false) continue;
       for (const f of ['demand', 'stock', 'stock_gudang', 'stock_dms', 'stock_dps', 'demand_part', 'demand_bahan']) it[f] = r12(it[f]);
-      const res = calc.calcItem({ ...it, on_order: (opts.onOrder || {})[it.item_code] || 0,
-        days: m.days || (it.category === 'BAHAN' ? daysFor(it.item_code) : undefined), moq: m.moq }, opts.params);
-      res.soq_value = res.unit_price != null ? Math.round(res.soq_order * res.unit_price) : null;
-      out.push(res);
+      out.push(calcOne(it, opts, { on_order: (opts.onOrder || {})[it.item_code] || 0, days: m.days, moq: m.moq }));
     }
     out.sort((a, b) => (b.soq_value || 0) - (a.soq_value || 0) || a.item_code.localeCompare(b.item_code));
     return { asOf, from, to: asOf, count: out.length, items: out };
   }
 
   /**
-   * Hitung ulang SOQ & status dari hasil yang sudah ada (mis. dibaca dari server) dengan On Order terbaru,
-   * tanpa perlu file ADMS. Demand & stok tidak berubah; hanya on_order, soq, soq_order, status, soq_value.
+   * Hitung ulang dari hasil yang sudah ada (mis. dibaca dari server) dengan On Order & parameter terbaru,
+   * tanpa perlu file ADMS. Demand & stok tidak berubah; yang dihitung ulang: stock level, MIP, SOQ, order, status, nilai.
+   * opts: { onOrder, settings, params }
    */
-  function applyOnOrder(items, onOrder = {}, opts = {}) {
-    return items.map((it) => {
-      const input = { ...it, on_order: onOrder[it.item_code] || 0 };
-      if (!input.days && it.category === 'BAHAN' && daysFor(it.item_code)) input.days = daysFor(it.item_code);
-      const res = calc.calcItem(input, opts.params);
-      res.soq_value = res.unit_price != null ? Math.round(res.soq_order * res.unit_price) : null;
-      return res;
-    });
+  function recalc(items, opts = {}) {
+    const onOrder = opts.onOrder || {};
+    return items.map((it) => calcOne(it, opts, { on_order: onOrder[it.item_code] || 0 }));
   }
+  const applyOnOrder = (items, onOrder = {}, opts = {}) => recalc(items, { ...opts, onOrder });
 
-  const api = { buildResults, applyOnOrder, rollingFrom, DEFAULT_MERGE, DEFAULT_DAYS, SLOC_LABEL };
+  const api = { buildResults, recalc, applyOnOrder, rollingFrom, DEFAULT_MERGE, SLOC_LABEL };
   if (isNode) module.exports = api;
   else root.LAEPart = Object.assign(root.LAEPart || {}, { build: api });
 })(typeof window !== 'undefined' ? window : globalThis);

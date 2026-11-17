@@ -9,8 +9,14 @@
  *   MIP          = PART  : ROUND(StockLevel × MAD, 0)
  *                  BAHAN : ROUNDUP(StockLevel × MAD, 1)
  *   SOQ          = MIP − Stock − On Order   (boleh negatif = kelebihan stok; On Order = PO yang belum datang, default 0)
- *   SOQ Order    = max(0, SOQ)        (yang benar-benar dipesan; PART dibulatkan ke atas ke MOQ)
+ *   SOQ Order    = max(0, SOQ)        (yang benar-benar dipesan; dibulatkan ke atas ke kelipatan order / MOQ bila > 0)
  *   Stock Rasio  = Stock / MAD        (hanya PART; MAD 0 → null)
+ *
+ * Penyesuaian dari menu Parameter (docs/FORMULAS.md §6, semuanya opsional; tanpa itu hasil = rumus Excel di atas):
+ *   params.tolDays      toleransi overstock (hari pemakaian): Normal selama Stock ≤ MIP + tolDays/30 × MAD
+ *   item.level_override Stock Level manual (bulan) menggantikan (hari1+hari2+hari3)/30
+ *   item.mip_factor     pengali MIP (1 = 100%): MIP = pembulatan(Stock Level × MAD × pengali)
+ *   item.mip_override   MIP manual (angka pasti) menggantikan hasil rumus
  */
 (function (root) {
   'use strict';
@@ -31,7 +37,7 @@
 
   const DEFAULT_PARAMS = {
     PART:  { months: 6, days: [15, 15, 14], levelRound: 1,    mipRound: 'ROUND0',   moq: 1 },
-    BAHAN: { months: 6, days: [7, 7, 15],   levelRound: null, mipRound: 'ROUNDUP1', moq: 1 },
+    BAHAN: { months: 6, days: [7, 7, 15],   levelRound: null, mipRound: 'ROUNDUP1', moq: 0 }, // 0 = order tidak dibulatkan
   };
 
   /** Agregasi demand per item dari baris transaksi. method: 'SUM' (qty) | 'COUNT' (jumlah baris, seperti pivot Excel Part saat ini) */
@@ -69,12 +75,13 @@
    * OVERSTOCK : stok di atas MIP
    * Tanpa On Order (0) hasilnya sama persis dengan aturan sebelum ada fitur PO.
    */
-  function status({ stock, mad, mip, soq }) {
-    if (mad === 0) return stock > 0 ? 'DEAD' : 'NO_MOVE';
+  function status({ stock, mad, mip, soq, tol = 0 }) {
+    // MIP manual > 0 untuk item tanpa demand: tetap dihitung seperti item biasa (management ingin item ini distok)
+    if (mad === 0 && !(mip > 0)) return stock > 0 ? 'DEAD' : 'NO_MOVE';
     if (stock <= 0 && mip <= 0) return 'NON_STOCK';
     if (soq > 0) return stock <= 0 ? 'STOCKOUT' : 'ORDER';
     if (stock < mip) return 'INCOMING';
-    return stock > mip ? 'OVERSTOCK' : 'NORMAL';
+    return stock > clean(mip + tol) ? 'OVERSTOCK' : 'NORMAL';
   }
 
   /**
@@ -88,13 +95,16 @@
     const demand = Number(item.demand) || 0;
     const mad = demand / p.months;
     const days = item.days || p.days;
-    const level = stockLevel(days, p.levelRound);
-    const m = mip(level, mad, p.mipRound);
+    const num = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
+    const levelOv = num(item.level_override), mipOv = num(item.mip_override), factor = num(item.mip_factor);
+    const level = levelOv != null ? levelOv : stockLevel(days, p.levelRound);
+    const m = mipOv != null ? Math.max(0, mipOv) : mip(level, factor != null ? mad * factor : mad, p.mipRound);
+    const tol = (Number(p.tolDays) || 0) / 30 * mad;
     const onOrder = Math.max(0, Number(item.on_order) || 0);
     const soq = clean(m - stock - onOrder);
-    const moq = item.moq || p.moq;
+    const moq = Number(item.moq || p.moq) || 0;
     let soqOrder = Math.max(0, soq);
-    if (item.category === 'PART' && soqOrder > 0) soqOrder = Math.ceil(clean(soqOrder / moq)) * moq;
+    if (moq > 0 && soqOrder > 0) soqOrder = clean(Math.ceil(clean(soqOrder / moq)) * moq);
     return {
       ...item,
       stock,
@@ -106,7 +116,7 @@
       mip: m,
       soq,
       soq_order: soqOrder,
-      status: status({ stock, mad, mip: m, soq }),
+      status: status({ stock, mad, mip: m, soq, tol }),
       warnings: Number(item.stock) < 0 ? ['Stock negatif dari ADMS dianggap 0'] : [],
     };
   }
