@@ -105,7 +105,8 @@
         if (!isNum(qty)) { errors.push({ row: i + 1, msg: 'Qty bukan angka', value: r[c['QTY']] }); continue; }
         out.push({ source: 'PART_SALES', date: doc.date, period: doc.date && doc.date.slice(0, 7), item_code: code(part),
           item_name: String(r[c['DESKRIPSI']] ?? '').trim(), qty, uom: null, doc_no: doc.doc_no, trx_type: doc.billing_type,
-          ref_no: doc.ref_no, customer: doc.customer });
+          ref_no: doc.ref_no, customer: doc.customer,
+          price: isNum(r[c['HARGA']]) ? r[c['HARGA']] : null });
       }
     }
     return { report: 'PART_SALES', range: periodRange(rows), rows: out, errors };

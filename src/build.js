@@ -66,6 +66,10 @@
         const it = get(t.item_code, category, t.item_name);
         it.demand += t.qty;
         it[category === 'PART' ? 'demand_part' : 'demand_bahan'] += t.qty;
+        // harga jual terakhir (kolom HARGA penjualan part) — cadangan bila item tidak ada di laporan stok
+        if (t.price > 0 && t.item_code === it.item_code && !(t.date < it.sales_price_date)) {
+          it.sales_price = t.price; it.sales_price_date = t.date;
+        }
       }
     };
     addTrx(parsed.partSales, 'PART');
@@ -84,6 +88,13 @@
     };
     addStock(parsed.stockPart, 'PART');
     addStock(parsed.stockBahan, 'BAHAN');
+
+    // Item tanpa baris di laporan stok (stok 0) tidak punya UNIT PRICE → pakai HARGA penjualan terakhirnya.
+    // UNIT PRICE stok = HARGA penjualan (harga jual sebelum PPN), jadi nilainya sebanding.
+    for (const it of Object.values(items)) {
+      if (it.unit_price == null && it.sales_price > 0) { it.unit_price = it.sales_price; it.price_source = 'SALES'; }
+      delete it.sales_price; delete it.sales_price_date;
+    }
 
     const r12 = (x) => Number.parseFloat(Number(x).toPrecision(12));
     const out = [];
