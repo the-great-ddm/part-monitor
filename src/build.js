@@ -35,7 +35,8 @@
 
   /**
    * parsed: { partSales, bahanIssue, stockPart, stockBahan } — masing-masing hasil importer.parseReport()
-   * opts:   { asOf?, months?, merge?, master? (map item_code → {days, moq, active}) , params? }
+   * opts:   { asOf?, months?, merge?, master? (map item_code → {days, moq, active}) , params?,
+   *           onOrder? (map item_code → qty PO yang belum datang; kode sudah digabung, lihat po.js) }
    */
   function buildResults(parsed, opts = {}) {
     const months = opts.months || 6;
@@ -90,7 +91,8 @@
       const m = master[it.item_code] || {};
       if (m.active === false) continue;
       for (const f of ['demand', 'stock', 'stock_gudang', 'stock_dms', 'stock_dps', 'demand_part', 'demand_bahan']) it[f] = r12(it[f]);
-      const res = calc.calcItem({ ...it, days: m.days || (it.category === 'BAHAN' ? daysFor(it.item_code) : undefined), moq: m.moq }, opts.params);
+      const res = calc.calcItem({ ...it, on_order: (opts.onOrder || {})[it.item_code] || 0,
+        days: m.days || (it.category === 'BAHAN' ? daysFor(it.item_code) : undefined), moq: m.moq }, opts.params);
       res.soq_value = res.unit_price != null ? Math.round(res.soq_order * res.unit_price) : null;
       out.push(res);
     }
@@ -98,7 +100,21 @@
     return { asOf, from, to: asOf, count: out.length, items: out };
   }
 
-  const api = { buildResults, rollingFrom, DEFAULT_MERGE, DEFAULT_DAYS, SLOC_LABEL };
+  /**
+   * Hitung ulang SOQ & status dari hasil yang sudah ada (mis. dibaca dari server) dengan On Order terbaru,
+   * tanpa perlu file ADMS. Demand & stok tidak berubah; hanya on_order, soq, soq_order, status, soq_value.
+   */
+  function applyOnOrder(items, onOrder = {}, opts = {}) {
+    return items.map((it) => {
+      const input = { ...it, on_order: onOrder[it.item_code] || 0 };
+      if (!input.days && it.category === 'BAHAN' && daysFor(it.item_code)) input.days = daysFor(it.item_code);
+      const res = calc.calcItem(input, opts.params);
+      res.soq_value = res.unit_price != null ? Math.round(res.soq_order * res.unit_price) : null;
+      return res;
+    });
+  }
+
+  const api = { buildResults, applyOnOrder, rollingFrom, DEFAULT_MERGE, DEFAULT_DAYS, SLOC_LABEL };
   if (isNode) module.exports = api;
   else root.LAEPart = Object.assign(root.LAEPart || {}, { build: api });
 })(typeof window !== 'undefined' ? window : globalThis);

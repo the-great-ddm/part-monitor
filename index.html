@@ -5,6 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>Part Monitor — Daya Daihatsu Medan</title>
+<!-- Peta modul untuk mesin OCR (src/ocr.js). Harus ada sebelum modul apa pun dimuat. -->
+<script type="importmap">
+{"imports":{
+  "onnxruntime-web":"./src/vendor/ort/ort.wasm.bundle.min.mjs",
+  "ppu-ocv/web":"https://cdn.jsdelivr.net/npm/ppu-ocv@4.0.1/index.web.js",
+  "ppu-ocv/canvas-web":"https://cdn.jsdelivr.net/npm/ppu-ocv@4.0.1/index.canvas-web.js"
+}}
+</script>
 <style>
   :root {
     --bg: #f4f6f8; --card: #fff; --line: #dfe4ea; --text: #1c2430; --muted: #66727f; --accent: #c8102e;
@@ -96,7 +104,32 @@
   .s-normal { background: #dff5e6; color: #18794e; } .s-overstock { background: #e0ebfd; color: #1d4ed8; }
   .s-nonstock { background: #eef0f3; color: #5f6b7a; } .s-dead { background: #4b5563; color: #fff; }
   .s-nomove { background: transparent; color: #9aa3af; border: 1px dashed #c3cad2; }
+  .s-incoming { background: #d9f2f2; color: #0b6b6b; }
+  .card.c-incoming { border-left-color: #14a3a3; } .card.c-special { border-left-color: #7c3aed; }
   .cat { font-size: 11px; font-weight: 700; color: var(--muted); }
+
+  .btn .pill { display: inline-block; min-width: 18px; margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--text); color: #fff; font-size: 11px; line-height: 18px; text-align: center; }
+  .po { border: 1px solid var(--line); border-radius: 8px; margin-top: 10px; overflow-x: auto; }
+  .po-head { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; padding: 8px 10px; background: #f6f8fa; }
+  .po-head code { font: 700 13px ui-monospace, Consolas, monospace; }
+  .po-head .sp { flex: 1; }
+  .po input, .po select { border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; background: #fff; font-size: 13px; }
+  .po input.code { width: min(190px, 44vw); font-family: ui-monospace, Consolas, monospace; }
+  .po input.qty { width: 80px; text-align: right; }
+  .po input.sap { width: 110px; } .po input.pono { width: 160px; font-family: ui-monospace, Consolas, monospace; }
+  .po table { min-width: 0; } .po td, .po th { text-align: left; white-space: normal; cursor: default; position: static; }
+  .po td.q, .po th.q { text-align: right; }
+  .po .warn { color: #b54708; font-size: 12px; display: block; }
+  .po .mini { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 13px; padding: 2px 6px; }
+  .po .mini:hover { color: #b42318; }
+  .role { border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 700; }
+  .r-count { background: #dff5e6; color: #18794e; } .r-need { background: #ffecd1; color: #b54708; }
+  .r-skip { background: #eef0f3; color: #5f6b7a; } .r-special { background: #ede9fe; color: #6d28d9; }
+  .r-risk { background: #fde2e0; color: #b42318; } .r-done { background: #eef0f3; color: #5f6b7a; }
+  details.skipped { margin-top: 12px; } details.skipped summary { cursor: pointer; color: var(--muted); font-weight: 600; }
+  details.skipped li { font-size: 13px; color: var(--muted); }
+  #specialPanel table { min-width: 760px; } #specialPanel th { cursor: default; } #specialPanel td, #specialPanel th { text-align: left; }
+  #specialPanel td.q, #specialPanel th.q { text-align: right; }
   .more { display: flex; justify-content: center; margin-top: 10px; }
   dialog { border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; width: min(380px, calc(100vw - 32px)); color: var(--text); }
   dialog::backdrop { background: rgba(20, 28, 38, .45); }
@@ -124,6 +157,7 @@
     </div>
     <div class="actions">
       <button class="btn" id="btnUpload">Upload Data ADMS</button>
+      <button class="btn" id="btnPo">PO Outstanding<span class="pill" id="poCount" hidden></span></button>
       <button class="btn" id="btnSave" hidden>Simpan ke Server</button>
       <button class="btn primary" id="btnExport" disabled>Export SOQ</button>
     </div>
@@ -148,6 +182,25 @@
     </div>
   </section>
 
+  <section class="panel" id="poPanel" hidden>
+    <h2>PO Outstanding</h2>
+    <p class="hint">Barang yang sudah dipesan tetapi belum datang mengurangi SOQ. Tempel (Ctrl+V) atau tarik screenshot layar ADMS:
+      <b>daftar PO</b> (Maintain Purchase Order) untuk status dan SAP Doc No., lalu <b>detail tiap PO</b> (Display Purchase Order) untuk item dan qty.
+      Gambar dibaca di perangkat ini saja. Periksa hasil bacaan di bawah sebelum menyimpan.</p>
+    <div class="drop" id="poDrop" tabindex="0" role="button">
+      <strong id="poDropText">Tempel screenshot (Ctrl+V), tarik ke sini, atau klik untuk memilih</strong>
+      <span class="hint">.png · .jpg — boleh beberapa sekaligus</span>
+      <input type="file" id="poFile" multiple accept="image/*" hidden>
+    </div>
+    <ul class="notes" id="poLog"></ul>
+    <div id="poList"></div>
+    <div class="upload-foot">
+      <button class="btn primary" id="btnPoSave" hidden>Simpan PO ke Server</button>
+      <button class="btn" id="btnPoAdd">Tambah PO manual</button>
+      <button class="btn" id="btnPoClose">Tutup</button>
+    </div>
+  </section>
+
   <section id="dash" hidden>
     <div class="cards" id="cards"></div>
     <div class="panel">
@@ -167,12 +220,20 @@
       </div>
       <div class="more"><button class="btn" id="btnMore" hidden></button></div>
     </div>
+    <div class="panel" id="specialPanel" hidden>
+      <h2>Pesanan Khusus / Warranty (PO tipe ZPOL)</h2>
+      <p class="hint">Part yang dipesan untuk unit tertentu. Tidak mengurangi SOQ, tetapi dipantau: yang sudah datang dan unitnya belum dikerjakan berpotensi menjadi dead stock.</p>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Tahap</th><th>Item</th><th class="q">Qty</th><th class="q">Umur</th><th>PO</th><th>PKB</th><th>No. Rangka</th></tr></thead>
+        <tbody id="specialBody"></tbody>
+      </table></div>
+    </div>
   </section>
 </main>
 <dialog id="saveDlg">
   <form id="saveForm" method="dialog">
     <h2>Simpan ke server</h2>
-    <p class="hint">Data hasil hitung akan menggantikan data yang dilihat team.</p>
+    <p class="hint">Data hasil hitung dan daftar PO outstanding akan menggantikan data yang dilihat team.</p>
     <label>PIN<input type="password" id="pin" inputmode="numeric" autocomplete="off" required></label>
     <label>Nama Anda (untuk catatan import)<input type="text" id="userName" maxlength="40" autocomplete="off"></label>
     <p class="dlg-msg" id="saveMsg" role="alert"></p>
@@ -183,12 +244,14 @@
   </form>
 </dialog>
 <div class="toast" id="toast" role="status" hidden></div>
-<footer>MAD = Demand 6 bulan ÷ 6 · MIP = Stock Level × MAD · SOQ = MIP − Stock · Stock = Gudang + DMS + DPS Langkat</footer>
+<footer>MAD = Demand 6 bulan ÷ 6 · MIP = Stock Level × MAD · SOQ = MIP − Stock − On Order · Stock = Gudang + DMS + DPS Langkat · On Order = PO yang belum datang</footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="src/calc.js"></script>
 <script src="src/import.js"></script>
 <script src="src/build.js"></script>
+<script src="src/po.js"></script>
+<script src="src/ocr.js"></script>
 <script src="src/config.js" onerror="this.remove()"></script>
 <script src="src/api.js"></script>
 <script src="src/ui.js"></script>

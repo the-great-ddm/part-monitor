@@ -8,7 +8,7 @@
  *                  BAHAN : tanpa pembulatan    → 7+7+15 = 0.9667 ; KIXX 15+15+15 = 1.5
  *   MIP          = PART  : ROUND(StockLevel × MAD, 0)
  *                  BAHAN : ROUNDUP(StockLevel × MAD, 1)
- *   SOQ          = MIP − Stock        (boleh negatif = kelebihan stok)
+ *   SOQ          = MIP − Stock − On Order   (boleh negatif = kelebihan stok; On Order = PO yang belum datang, default 0)
  *   SOQ Order    = max(0, SOQ)        (yang benar-benar dipesan; PART dibulatkan ke atas ke MOQ)
  *   Stock Rasio  = Stock / MAD        (hanya PART; MAD 0 → null)
  */
@@ -63,21 +63,23 @@
    * DEAD      : tidak ada demand 6 bln, masih ada stok (modal tertahan)
    * NO_MOVE   : tidak ada demand, tidak ada stok
    * NON_STOCK : ada demand tapi sangat jarang → MIP 0, stok 0 (cukup dipesan saat ada kebutuhan / SOP)
-   * STOCKOUT  : stok 0 padahal MIP > 0 → prioritas order
-   * ORDER     : stok ada tapi di bawah MIP
+   * STOCKOUT  : stok 0 padahal MIP > 0, dan PO yang berjalan belum menutup kebutuhan → prioritas order
+   * ORDER     : stok ada tapi di bawah MIP, dan PO yang berjalan belum menutup kebutuhan
+   * INCOMING  : stok di bawah MIP tetapi sudah tertutup PO yang belum datang → tunggu, jangan order lagi
    * OVERSTOCK : stok di atas MIP
+   * Tanpa On Order (0) hasilnya sama persis dengan aturan sebelum ada fitur PO.
    */
   function status({ stock, mad, mip, soq }) {
     if (mad === 0) return stock > 0 ? 'DEAD' : 'NO_MOVE';
-    if (stock <= 0) return mip > 0 ? 'STOCKOUT' : 'NON_STOCK';
-    if (soq > 0) return 'ORDER';
-    if (soq < 0) return 'OVERSTOCK';
-    return 'NORMAL';
+    if (stock <= 0 && mip <= 0) return 'NON_STOCK';
+    if (soq > 0) return stock <= 0 ? 'STOCKOUT' : 'ORDER';
+    if (stock < mip) return 'INCOMING';
+    return stock > mip ? 'OVERSTOCK' : 'NORMAL';
   }
 
   /**
    * Hitung satu item.
-   * item: { item_code, category: 'PART'|'BAHAN', stock, demand, days?, moq? }
+   * item: { item_code, category: 'PART'|'BAHAN', stock, demand, on_order?, days?, moq? }
    */
   function calcItem(item, params = DEFAULT_PARAMS) {
     const p = params[item.category];
@@ -88,13 +90,15 @@
     const days = item.days || p.days;
     const level = stockLevel(days, p.levelRound);
     const m = mip(level, mad, p.mipRound);
-    const soq = clean(m - stock);
+    const onOrder = Math.max(0, Number(item.on_order) || 0);
+    const soq = clean(m - stock - onOrder);
     const moq = item.moq || p.moq;
     let soqOrder = Math.max(0, soq);
     if (item.category === 'PART' && soqOrder > 0) soqOrder = Math.ceil(clean(soqOrder / moq)) * moq;
     return {
       ...item,
       stock,
+      on_order: onOrder,
       demand,
       mad,
       stock_ratio: mad > 0 ? stock / mad : null,
