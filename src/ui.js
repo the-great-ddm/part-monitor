@@ -177,7 +177,8 @@
       renderUpload();
       return;
     }
-    state.result = { asOf: r.asOf, from: r.from, items: r.items, source: 'upload', files: { ...state.files } };
+    // unsaved: hasil upload belum dikirim ke server → jangan ditimpa data server yang lebih lama saat halaman dimuat ulang
+    state.result = { asOf: r.asOf, from: r.from, items: r.items, source: 'upload', files: { ...state.files }, unsaved: !!(L.api && L.api.configured()) };
     state.fresh = true;
     // pesanan khusus (ZPOL): part yang sudah terjual pada PKB-nya ditandai selesai
     if (L.po.markSold(state.po.store, state.parsed.partSales && state.parsed.partSales.rows) > 0) { state.po.dirty = true; persistPo(); }
@@ -308,9 +309,9 @@
     if (!r) return;
     $('dash').hidden = false;
     $('btnExport').disabled = false;
-    $('btnSave').hidden = !(state.fresh && L.api && L.api.configured());
+    $('btnSave').hidden = !((state.fresh || r.unsaved) && L.api && L.api.configured());
     const src = r.source === 'server' ? 'dari server' : 'dihitung di perangkat ini';
-    $('meta').textContent = `Stok per ${tgl(r.asOf)} · demand ${tgl(r.from)} s/d ${tgl(r.asOf)} · ${src}`;
+    $('meta').textContent = `Stok per ${tgl(r.asOf)} · demand ${tgl(r.from)} s/d ${tgl(r.asOf)} · ${src}${r.unsaved ? ' · BELUM disimpan ke server' : ''}`;
     renderCards();
     renderTable();
     renderSpecial();
@@ -426,6 +427,11 @@
       if (sendPo) payload.po = L.po.toRows(state.po.store);
       const res = await L.api.save(payload);
       state.fresh = false;
+      if (state.result && state.result.unsaved) {
+        state.result.unsaved = false;
+        try { root.localStorage.setItem(STORE_KEY, JSON.stringify(state.result)); } catch (err) { /* abaikan */ }
+        renderDash();
+      }
       try { root.localStorage.setItem('laepart.user', user); } catch (err) { /* abaikan */ }
       $('btnSave').hidden = true;
       if (sendPo && typeof res.po_saved !== 'number') {
@@ -702,7 +708,11 @@
   async function loadInitial() {
     try {
       const saved = JSON.parse(root.localStorage.getItem(STORE_KEY) || 'null');
-      if (saved && Array.isArray(saved.items)) state.result = saved;
+      if (saved && Array.isArray(saved.items)) {
+        // hasil upload dari versi sebelum ada tanda unsaved: anggap belum disimpan (menyimpan ulang tidak merugikan)
+        if (saved.source === 'upload' && saved.unsaved === undefined) saved.unsaved = !!(L.api && L.api.configured());
+        state.result = saved;
+      }
     } catch (e) { /* abaikan data lokal yang rusak */ }
     try {
       const ps = JSON.parse(root.localStorage.getItem(PARAM_KEY) || 'null');
@@ -731,7 +741,9 @@
         }
         // PO dari server dipakai kecuali ada perubahan lokal yang belum disimpan
         if (Array.isArray(r.po) && !state.po.dirty) { state.po.store = L.po.fromRows(r.po); persistPo(); }
-        if (r && r.items && r.items.length && !state.fresh) {
+        // data server dipakai, kecuali hasil upload di perangkat ini belum disimpan dan tidak lebih lama dari data server
+        const keepLocal = state.fresh || (state.result && state.result.unsaved && !(r.calc_date > state.result.asOf));
+        if (r && r.items && r.items.length && !keepLocal) {
           state.result = { asOf: r.calc_date, from: L.build.rollingFrom(r.calc_date), items: r.items, source: 'server' };
           showUpload(false);
         }
