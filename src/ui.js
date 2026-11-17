@@ -464,10 +464,10 @@
     const [cls, label] = ROLE[role];
     const lines = (o.lines || []).map((l, i) => {
       const warn = l.corrected ? `<span class="warn">Terbaca "${esc(l.corrected)}", dikoreksi otomatis. Mohon dicek.</span>`
-        : (l.item_code && state.result && !known.has(l.item_code) ? '<span class="warn">Kode ini tidak ada di data stok/penjualan. Cek ejaannya.</span>' : '');
+        : (l.item_code && state.result && !known.has(l.item_code) ? '<span class="warn">Belum ada di stok maupun penjualan 6 bulan terakhir (wajar untuk part baru / jarang). Jika kode sudah sama dengan layar ADMS, abaikan saja.</span>' : '');
       return `<tr data-line="${i}">
         <td><input class="code" data-f="item_code" value="${esc(l.item_code)}" aria-label="Kode item" spellcheck="false">${warn}</td>
-        <td>${esc(l.item_name || '')}${l.sold ? `<span class="warn" style="color:#18794e">Terjual ${tgl(l.sold)}</span>` : ''}</td>
+        <td><input class="name" data-f="item_name" value="${esc(l.item_name || '')}" aria-label="Nama item">${l.sold ? `<span class="warn" style="color:#18794e">Terjual ${tgl(l.sold)}</span>` : ''}</td>
         <td class="q"><input class="qty" data-f="qty" inputmode="decimal" value="${esc(String(l.qty).replace('.', ','))}" aria-label="Qty"></td>
         <td><label><input type="checkbox" data-f="delivered"${l.delivered ? ' checked' : ''}> sudah datang</label></td>
         <td><button class="mini" data-act="del-line" title="Hapus baris">✕</button></td>
@@ -631,7 +631,13 @@
       const today = todayISO();
       if (tr) {
         const l = o.lines[Number(tr.dataset.line)];
-        if (f === 'item_code') { l.item_code = el.value.trim().toUpperCase(); l.corrected = ''; }
+        if (f === 'item_code') {
+          l.item_code = el.value.trim().toUpperCase(); l.corrected = '';
+          // Nama kosong → ambil dari data stok/penjualan bila kodenya dikenal
+          const hit = !l.item_name && state.result && state.result.items.find((x) => x.item_code === l.item_code);
+          if (hit) l.item_name = hit.item_name;
+        }
+        else if (f === 'item_name') l.item_name = el.value.trim();
         else if (f === 'qty') { const q = Number(el.value.trim().replace(',', '.')); l.qty = Number.isFinite(q) && q >= 0 ? q : 0; }
         else if (f === 'delivered') { l.delivered = el.checked; l.delivered_at = el.checked ? (l.delivered_at || today) : ''; }
       } else if (f === 'po_no') {
